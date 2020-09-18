@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "ajv": "^6.10.0",
+    "axios": "^0.20.0",
     "opus-recorder": "^6.1.1",
     "vue": "^2.5.2",
     "vue-audio-recorder": "^3.0.1",

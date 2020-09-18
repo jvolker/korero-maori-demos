@@ -1,8 +1,8 @@
 <template>
   <div class="Korero">
-    <div class="header">
-      <h4>Kōrero Māori Streaming ASR (Demo)</h4>
-      <div class='status'> {{status}}</div>
+    <div class="header" v-bind:class="{ recordingOn: recordingOn}">
+      <h4>Te Reo Live Audio Translator</h4>
+      <div class='status'> {{status}} <i v-if="status.startsWith('Connecting')" class="fa fa-spinner fa-spin"></i> </div>
       <button id="startVAD" v-bind:class="{ vad: vadOn, on: recordingOn, 'loading': loadRecording}">
         <i class="fa fa-microphone" ></i>
         <i class="fa fa-stop" ></i>
@@ -23,11 +23,18 @@
         <div v-for="(item, index) in transcriptions" class='transcription' v-bind:class="[item.status]" v-if="item.status != 'Failed'"> 
           <button class="delete" v-if="item.status != 'Transcribing'" v-on:click="deleteObject(index)"><i class="fa fa-times"></i></button>
           <div class='text'>
-            <i class="fa fa-spinner fa-spin" v-bind:class="[item.status]" v-if="item.status == 'Transcribing'" ></i>
-          
+            <div v-if="item.status == 'Transcribing'">Transcribing <i class="fa fa-spinner fa-spin" v-bind:class="[item.status]"></i></div>
             <div v-if="item.status != 'Transcribing'">{{item.captured_text}} <span class="active_text">{{item.active_text}}</span></div>
         
           </div>
+          <div class='text translation' v-if="item.status == 'Success'" v-bind:class="[item.status]">
+            <div class='status' v-if="item.translation_status == ''">Waiting for transcription <i class="fa fa-spinner fa-spin"></i></div>
+            <div v-if="item.translation_status == 'Translating'">Translating</div>
+            
+            <i class="fa fa-spinner fa-spin" v-if="item.translation_status == 'Translating'" ></i>
+            <div v-if="item.translation != ''">{{item.translation}}</div>
+          </div>
+          <!-- {{ item }} -->
           <div class="audio">
             <audio v-if="item.audio_url" :src="item.audio_url" type="audio/mp3" controls v-on:play="stopRecording"></audio>
           </div>
@@ -42,9 +49,10 @@
 import recorder from '../lib/streaming_recorder.js';
 const ApiAuth = require('../../api_auth');
 const api_auth = ApiAuth.api_auth;
+const translator_api_key = ApiAuth.translator_api_key;
 // import 'ws-audio-api';
 // const streamer = WSAudioAPI.Streamer();
-//const axios = require('axios');
+const axios = require('axios');
 export default {
   name: 'Kōrero',
   data () {
@@ -82,16 +90,47 @@ export default {
       var current = this.transcriptions[0];
       if (current) {
         if (text=='EOS') {
+          // console.log('EOS')
+          this.translate(current);
           current.captured_text += ' ' + current.active_text;
-          current.active_text = '';
+          if (current.captured_text == '') current.captured_text = 'Transcription returned empty result';
+
+          current.active_text = '';          
         }
         else {  
+          // console.log('processing Results')
+          // console.log('received: ', text)
+          
           current.active_text = text;
-          current.status = 'Success';
+          current.status = 'Success';          
         }
       }
     },
+    translate: function(current) {
+      console.log("Request translation")
+      console.log(current.active_text)
+      current.translation_status = 'Translating';
+      axios.post('https://translation.googleapis.com/language/translate/v2?key=' + translator_api_key,{
+        "q": current.active_text,
+        "source": "mi",
+        "target": "en",
+        "format": "text"
+      }).then((response) => {
+        console.log("Received response from Google Translator API")
+      
+        if (response && response.data) {
+          current.translation_status = 'Success';
 
+          console.log(response.data)
+          current.translation = response.data.data.translations[0].translatedText;
+          
+          var synth = window.speechSynthesis;
+          var utterThis = new SpeechSynthesisUtterance(current.translation);
+          utterThis.rate = 0.5;
+          synth.speak(utterThis);
+        }
+      })
+    },
     initWebSocket: function() {
 
         var socket_url = process.env.ASR_WEBSOCKET_ENDPOINT;
@@ -151,7 +190,9 @@ export default {
         var transcription = { 
           status: 'Transcribing',
           captured_text:'', 
-          active_text: null
+          active_text: null,
+          translation_status: '',
+          translation : ''
         }
         this.transcriptions.unshift(transcription)
 
@@ -250,6 +291,18 @@ button.delete{
 .transcription .text {
   padding: 15px 20px;
 }
+
+.translation {
+  background-color: #393939;
+  color: white;
+  font-weight: bold;
+  border-bottom-right-radius: 8px;
+  border-bottom-left-radius: 8px;
+}
+.translation.waiting {
+  background-color: #bbbbbb;
+}
+
 .transcription:nth-of-type(1){
   margin-top: 40px;
 }
@@ -259,6 +312,9 @@ button.delete{
 }
 div.transcription.Success div.text [class*=fa]{
   display: none;
+}
+div.translation i {
+  display: inline-block !important;
 }
 .Korero, .header, .body{
   display: flex;
@@ -276,11 +332,18 @@ div.transcription.Success div.text [class*=fa]{
   padding-left: 15px;
   padding-right: 15px;  
 }
+.header.recordingOn{
+  background-color: #ff9191;
+}
 .header .status {
   margin-top: -15px;
   margin-bottom: 15px;
   font-style: italic;
+  background-color: white;
+  border-radius: 8px;
+  padding: 5px 0px;
 }
+
 
 #transcriptions{
   z-index: 0;
@@ -320,6 +383,7 @@ div.transcription.Success div.text [class*=fa]{
 }
 #vadStatus.active div{
   border-color: red;
+  border-width: 10px;
 }
 #vadStatus.mobile{
   height: 28px;
@@ -412,5 +476,9 @@ span.prob{
   display: inline-block;
   font-size: 8px;
   /*line-he*/ight: 0px;
+}
+
+button.delete {
+    padding: 8px 12px;
 }
 </style>
