@@ -22,17 +22,17 @@
       <div id="transcriptions">
         <div v-for="(item, index) in transcriptions" class='transcription' v-bind:class="[item.status]" v-if="item.status != 'Failed'"> 
           <button class="delete" v-if="item.status != 'Transcribing'" v-on:click="deleteObject(index)"><i class="fa fa-times"></i></button>
-          <div class='text'>
-            <div v-if="item.status == 'Transcribing'">Transcribing <i class="fa fa-spinner fa-spin" v-bind:class="[item.status]"></i></div>
+          <div class="text" ref="transcriptions">
             <div v-if="item.status != 'Transcribing'">{{item.captured_text}} <span class="active_text">{{item.active_text}}</span></div>
-        
+            <div v-if="item.status == 'Transcribing'">Transcribing <i class="fa fa-spinner fa-spin" v-bind:class="[item.status]"></i></div>
           </div>
-          <div class='text translation' v-if="item.status == 'Success'" v-bind:class="[item.status]">
+          <div class='text translation' v-if="item.status == 'Success'" v-bind:class="[item.status]" ref="translations">
+            <div v-if="item.translation != '' || item.active_translation != ''">{{item.translation}} <span class="active_text">{{item.active_translation}}</span></div>
+
             <div class='status' v-if="item.translation_status == ''">Waiting for transcription <i class="fa fa-spinner fa-spin"></i></div>
             <div v-if="item.translation_status == 'Translating'">Translating</div>
             
             <i class="fa fa-spinner fa-spin" v-if="item.translation_status == 'Translating'" ></i>
-            <div v-if="item.translation != ''">{{item.translation}}</div>
           </div>
           <!-- {{ item }} -->
           <div class="audio">
@@ -68,6 +68,10 @@ export default {
     }
   },
   methods: {
+    scrollDown: function (container) {
+      // console.log("scrollDown")      
+      container.scrollTop = container.scrollHeight;
+    },
     deleteObject: function (e) {
       this.transcriptions.splice(e, 1)
     },
@@ -88,6 +92,10 @@ export default {
     },
     processResult: function(text) {
       var current = this.transcriptions[0];
+
+      if (this.$refs.translations && !current.translationContainer) current.translationContainer = this.$refs.translations[0];
+      if (this.$refs.transcriptions && !current.transcriptionContainer) current.transcriptionContainer = this.$refs.transcriptions[0];
+
       if (current) {
         if (text=='EOS') {
           // console.log('EOS')
@@ -95,7 +103,7 @@ export default {
           current.captured_text += ' ' + current.active_text;
           if (current.captured_text == '') current.captured_text = 'Transcription returned empty result';
 
-          current.active_text = '';          
+          current.active_text = '';                    
         }
         else {  
           // console.log('processing Results')
@@ -103,10 +111,12 @@ export default {
           
           current.active_text = text;
           current.status = 'Success';          
+          this.scrollDown(current.transcriptionContainer);
         }
       }
     },
     translate: function(current) {
+
       console.log("Request translation")
       console.log(current.active_text)
       current.translation_status = 'Translating';
@@ -122,7 +132,10 @@ export default {
           current.translation_status = 'Success';
 
           console.log(response.data)
-          current.translation = response.data.data.translations[0].translatedText;
+          current.translation += ' ' + current.active_translation;
+          current.active_translation = response.data.data.translations[0].translatedText;
+          
+          this.scrollDown(current.translationContainer);
           
           var synth = window.speechSynthesis;
           var utterThis = new SpeechSynthesisUtterance(current.translation);
@@ -192,7 +205,8 @@ export default {
           captured_text:'', 
           active_text: null,
           translation_status: '',
-          translation : ''
+          translation : '',
+          active_translation : ''
         }
         this.transcriptions.unshift(transcription)
 
@@ -290,6 +304,9 @@ button.delete{
 }
 .transcription .text {
   padding: 15px 20px;
+
+  height: 100px;
+  overflow: scroll;
 }
 
 .translation {

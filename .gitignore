@@ -15,3 +15,4 @@ yarn-error.log*
 
 # Credential Files
 api_auth.js
+streaming-demo/dist
